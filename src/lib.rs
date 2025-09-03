@@ -1,7 +1,6 @@
 use std::ffi::{c_int, c_void, CString};
 use std::os::raw::c_char;
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
 use std::error::Error;
 use std::fmt;
 
@@ -31,6 +30,12 @@ pub struct ClientHandle {
     handle: *mut c_void,
 }
 
+// Implement the Send trait for ClientHandle.
+// This is an UNSAFE operation because we are promising the compiler that it's safe to
+// send this raw pointer across threads. We know it's safe because the C core manages
+// the lifecycle and we are only passing an identifier.
+unsafe impl Send for ClientHandle {}
+
 impl ClientHandle {
     /// Creates a new type-safe client handle.
     pub fn new(handle: *mut c_void) -> Self {
@@ -45,8 +50,8 @@ pub type ClientCallback = Box<dyn Fn(ClientHandle, &[u8]) + Send + Sync + 'stati
 static mut GLOBAL_CALLBACK_SENDER: Option<mpsc::Sender<(ClientHandle, Vec<u8>)>> = None;
 
 // Import the functions from our static C library
-#[link(name = "async_core", kind = "static")]
-extern "C" {
+// The 'unsafe' keyword is a new requirement for 'extern' blocks.
+unsafe extern "C" {
     fn initialize_server(addr: *const c_char, port: c_int, callback: extern "C" fn(*mut c_void, *const c_char, c_int)) -> c_int;
     fn start_server();
     fn shutdown_server();
